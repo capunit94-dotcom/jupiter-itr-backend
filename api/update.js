@@ -3,7 +3,6 @@ const querystring = require('querystring');
 const CLIENT_ID = process.env.CLIENT_ID;
 const TENANT_ID = process.env.TENANT_ID;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
-const SP_HOST = process.env.SP_HOST || 'jupiterkolkata.sharepoint.com';
 const TABLE_NAME = 'ITR_Data';
 
 function request(options, body) {
@@ -46,16 +45,18 @@ module.exports = async (req, res) => {
     if (!srNo || !action) return res.status(400).json({ error: 'Missing srNo or action' });
 
     const token = await getToken();
-    const site = await graph(token, 'GET', `/sites/${SP_HOST}`);
-    if (site.s !== 200) throw new Error('Site not found: ' + (site.b.error && site.b.error.message));
-    const siteId = site.b.id;
 
-    const search = await graph(token, 'GET', `/sites/${siteId}/drive/search(q='Jupiter_IT_PowerAutomate_Backend')`);
-    const file = (search.b.value || []).find(f => f.name.includes('Jupiter_IT_PowerAutomate_Backend'));
-    if (!file) throw new Error('Excel file not found');
+    let driveId = process.env.DRIVE_ID;
+    let fileId = process.env.FILE_ID;
 
-    const driveId = file.parentReference.driveId;
-    const fileId = file.id;
+    if (!driveId || !fileId) {
+      const search = await graph(token, 'GET', `/me/drive/search(q='Jupiter_IT_PowerAutomate_Backend')`);
+      const file = (search.b.value || []).find(f => f.name && f.name.includes('Jupiter_IT_PowerAutomate_Backend'));
+      if (!file) throw new Error('Excel file not found. Please set DRIVE_ID and FILE_ID env vars in Vercel.');
+      driveId = file.parentReference.driveId;
+      fileId = file.id;
+    }
+
     const rows = await graph(token, 'GET', `/drives/${driveId}/items/${fileId}/workbook/tables/${TABLE_NAME}/rows`);
     if (rows.s !== 200) throw new Error('Cannot read table: ' + JSON.stringify(rows.b));
 
